@@ -1,0 +1,4 @@
+name = "Anthropic"
+uuid = "a00d14cb-3434-48ec-9b49-cfc2b9ce2a8f"
+authors = ["Cvikli <havlikmarcell@gmail.com>"]
+version = "0.1.0"
