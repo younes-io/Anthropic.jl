@@ -46,16 +46,18 @@ function stream_response(msgs::Vector{Dict{String,String}}; model::String="claud
                 lines = String.(filter(!isempty, split(chunk, "\n")))
                 for line in lines
                     # @show line
-                    # TODO !!! type == error !! HANDLE!!
                     startswith(line, "data: ") || continue
                     line == "data: [DONE]" && (isdone=true; break)
                     data = JSON.parse(replace(line, r"^data: " => ""))
-                    # @show data
-                    get(data, "type", "") == "error" && (print(data["error"]); (isdone=true); break)
-                    if get(get(data, "delta", Dict()), "type", "") == "text_delta"
+                    if data["type"] == "error"
+                        error_msg = get(data, "error", Dict("message" => "Unknown error"))["message"]
+                        put!(channel, "ERROR: $error_msg")
+                        printout && println("\nERROR: $error_msg")
+                        isdone = true
+                        break
+                    elseif get(get(data, "delta", Dict()), "type", "") == "text_delta"
                         text = data["delta"]["text"]
                         put!(channel, text)
-                        # print(output, text)
                         printout && print(text)
                         flush(stdout)
                     end
@@ -63,9 +65,18 @@ function stream_response(msgs::Vector{Dict{String,String}}; model::String="claud
             end
             HTTP.closeread(io)
         end;
+        close(channel)
     )
 
     return channel
+end
+
+function channel_to_string(channel::Channel)
+    response = ""
+    for chunk in channel
+        response *= chunk
+    end
+    return response
 end
 
 ai_stream_safe(msgs; model, max_tokens, printout=true) = safe_fn(stream_response, msgs, model=model, max_tokens=max_tokens, printout=printout)
