@@ -9,7 +9,7 @@ const API_URL = "https://api.anthropic.com/v1/messages"
 include("error_handler.jl")
 
 
-export ai_stream_safe, ai_ask_safe
+export ai_stream_safe, ai_ask_safe, stream_response
 
 function get_api_key()
     key = get(ENV, "ANTHROPIC_API_KEY", "")
