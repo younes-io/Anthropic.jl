@@ -2,10 +2,14 @@ module Anthropic
 
 using HTTP
 using JSON
-
-export stream_response
+using Boilerplate: @async_showerr
 
 const API_URL = "https://api.anthropic.com/v1/messages"
+
+include("error_handler.jl")
+
+
+export ai_stream_safe, ai_ask_safe
 
 function get_api_key()
     key = get(ENV, "ANTHROPIC_API_KEY", "")
@@ -13,8 +17,8 @@ function get_api_key()
     return key
 end
 
-stream_response(prompt::String; model::String="claude-3-5-sonnet-20240620", max_tokens::Int=256) = stream_response([Dict("role" => "user", "content" => prompt)]; model, max_tokens)
-function stream_response(msgs::Vector{Dict{String,String}}; model::String="claude-3-opus-20240229", max_tokens::Int=1024)
+stream_response(prompt::String; model::String="claude-3-5-sonnet-20240620", max_tokens::Int=256, printout=true) = stream_response([Dict("role" => "user", "content" => prompt)]; model, max_tokens, printout)
+function stream_response(msgs::Vector{Dict{String,String}}; model::String="claude-3-opus-20240229", max_tokens::Int=1024, printout=true)
     body = Dict("model" => model, "max_tokens" => max_tokens, "stream" => true)
     
     if msgs[1]["role"] == "system"
@@ -52,7 +56,7 @@ function stream_response(msgs::Vector{Dict{String,String}}; model::String="claud
                         text = data["delta"]["text"]
                         put!(channel, text)
                         # print(output, text)
-                        print(text)
+                        printout && print(text)
                         flush(stdout)
                     end
                 end
@@ -63,5 +67,8 @@ function stream_response(msgs::Vector{Dict{String,String}}; model::String="claud
 
     return channel
 end
+
+ai_stream_safe(msgs; model, max_tokens, printout=true) = safe_fn(stream_response, msgs, model=model, max_tokens=max_tokens, printout=printout)
+ai_ask_safe(conversation; model, return_all=false)     = safe_fn(aigenerate, conversation, model=model, return_all=return_all)
 
 end # module Anthropic
