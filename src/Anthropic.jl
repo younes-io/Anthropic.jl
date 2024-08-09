@@ -53,7 +53,7 @@ function stream_response(msgs::Vector{Dict{String,String}}; model::String="claud
         "anthropic-version" => "2023-06-01"
     ]
     
-    channel = Channel{String}(10000)
+    channel = Channel{String}(2000)
     @async_showerr (
         HTTP.open("POST", "https://api.anthropic.com/v1/messages", headers; status_exception=false) do io
             write(io, JSON.json(body))
