@@ -45,6 +45,28 @@ println(response.content)
 - type ERROR in the streaming should be handled more comprehensively... 
 Cancel request works on the web...
 - Implement response cancellation functionality. Canceling a query should be possible somehow! Do we have "stop" API? example: https://api.claude.ai/api/organizations/d9192fb1-1546-491e-89f2-d3432c9695d2/chat_conversations/f2f779eb-49c5-4605-b8a5-009cdb88fe20/stop_response
+
+Other case:
+Chat_conversation id: https://api.claude.ai/api/organizations/d9192fb1-1546-491e-89f2-d3432c9695d2/chat_conversations 
+response: {
+    "uuid": "500aece9-8e42-498e-a035-5840e25f8864",
+    "name": "",
+    "summary": "",
+    "model": null,
+    "created_at": "2024-08-11T20:59:19.722850Z",
+    "updated_at": "2024-08-11T20:59:19.722850Z",
+    "settings": {
+        "preview_feature_uses_artifacts": true,
+        "preview_feature_uses_latex": null,
+        "preview_feature_uses_citations": null
+    },
+    "is_starred": false,
+    "project_uuid": null,
+    "current_leaf_message_uuid": null
+}
+Stop request
+ https://api.claude.ai/api/organizations/d9192fb1-1546-491e-89f2-d3432c9695d2/chat_conversations/c05a216d-952c-4fb4-8797-c6442a3a13af/stop_response
+
 - Add support for more Anthropic API features
 
 ## Contributing

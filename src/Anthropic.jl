@@ -54,6 +54,7 @@ function stream_response(msgs::Vector{Dict{String,String}}; model::String="claud
     ]
     
     channel = Channel{String}(2000)
+    meta = Channel{String}(100)
     @async_showerr (
         HTTP.open("POST", "https://api.anthropic.com/v1/messages", headers; status_exception=false) do io
             write(io, JSON.json(body))
@@ -82,13 +83,26 @@ function stream_response(msgs::Vector{Dict{String,String}}; model::String="claud
                         text = data["delta"]["text"]
                         put!(channel, text)
                         printout && print(text)
-                        flush(stdout)
+                        flush(stdout)                   
+                    elseif data["type"] == "message_delta"
+                        put!(meta, "((input_tokens: $(get(get(data,"usage",Dict()),"input_tokens",-1)), output_tokens: $(get(get(data,"usage",Dict()), "output_tokens", -1))))")
+                    elseif data["type"] == "message_start"
+                        put!(meta, "((message: $(get(data["message"],"id",-1)), input_tokens: $(get(get(data,"usage",Dict()),"input_tokens",-1)), output_tokens: $(get(get(data,"usage",Dict()), "output_tokens", -1))))")
+                    elseif data["type"] == "message_stop"
+                        close(channel)
+                        close(meta)
+                    elseif data["type"] in ["content_block_start", "content_block_stop", "ping"]
+                        nothing
+                    else
+                        println("unknown packet")
+                        println(line)
                     end
                 end
             end
             HTTP.closeread(io)
         end;
-        close(channel)
+        isopen(channel) && close(channel)
+        isopen(meta) && close(meta)
     )
 
     return channel
