@@ -101,7 +101,7 @@ function stream_response(msgs::Vector{Dict{String,String}}; model::String="claud
             end
             HTTP.closeread(io)
         end;
-        isopen(channel) && close(channel)
+        isopen(channel) && close(channel);
         isopen(meta) && close(meta)
     )
 
