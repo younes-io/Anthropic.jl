@@ -2,7 +2,6 @@ module Anthropic
 
 using HTTP
 using JSON
-using Boilerplate: @async_showerr
 
 const API_URL = "https://api.anthropic.com/v1/messages"
 const DEFAULT_MAX_TOKEN = 1024
@@ -55,7 +54,7 @@ function stream_response(msgs::Vector{Dict{String,String}}; model::String="claud
     
     channel = Channel{String}(2000)
     meta = Channel{String}(100)
-    @async_showerr (
+    @async (
         HTTP.open("POST", "https://api.anthropic.com/v1/messages", headers; status_exception=false) do io
             write(io, JSON.json(body))
             HTTP.closewrite(io)    # indicate we're done writing to the request
