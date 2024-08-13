@@ -11,6 +11,6 @@ PromptingTools = "670122d1-24a8-4d70-bfce-740807c42192"
 
 [compat]
 julia = "^1.5"
-HTTP = "^1.10.5"
-JSON = "^0.21.4"
-PromptingTools = "^0.48.0"
+HTTP = "1.10.8"
+JSON = "0.21.4"
+PromptingTools = "0.48.0"
