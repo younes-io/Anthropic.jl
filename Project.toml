@@ -1,7 +1,7 @@
 name = "Anthropic"
 uuid = "a00d14cb-3434-48ec-9b49-cfc2b9ce2a8f"
 authors = ["Cvikli <havlikmarcell@gmail.com>"]
-version = "0.1.0"
+version = "0.8.0"
 
 [deps]
 HTTP = "cd3eb016-35fb-5094-929b-558a96fad6f3"
@@ -13,4 +13,4 @@ PromptingTools = "670122d1-24a8-4d70-bfce-740807c42192"
 julia = "^1.5"
 HTTP = "1.10.8"
 JSON = "0.21.4"
-PromptingTools = "0.48.0"
+PromptingTools = "0.46.0"

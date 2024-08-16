@@ -2,9 +2,10 @@ module Anthropic
 
 using HTTP
 using JSON
+using PromptingTools: SystemMessage, UserMessage, AIMessage
 
 const API_URL = "https://api.anthropic.com/v1/messages"
-const DEFAULT_MAX_TOKEN = 1024
+const DEFAULT_MAX_TOKEN = 4096
 
 include("error_handler.jl")
 
@@ -45,12 +46,13 @@ function stream_response(msgs::Vector{Dict{String,String}}; model::String="claud
     
     @assert is_valid_message_sequence(body["messages"]) "Invalid message sequence. Messages should alternate between 'user' and 'assistant', starting with 'user'. $(msgs[2:end])"
     
-
     headers = [
         "Content-Type" => "application/json",
         "X-API-Key" => get_api_key(),
         "anthropic-version" => "2023-06-01"
     ]
+    max_tokens>4096 && model=="claude-3-5-sonnet-20240620" && push!(headers, "anthropic-beta"=>"max-tokens-3-5-sonnet-2024-07-15")
+    
     
     channel = Channel{String}(2000)
     meta = Channel{String}(100)
@@ -66,36 +68,75 @@ function stream_response(msgs::Vector{Dict{String,String}}; model::String="claud
                 lines = String.(filter(!isempty, split(chunk, "\n")))
                 for line in lines
                     # @show line
-                    startswith(line, "data: ") || continue
-                    line == "data: [DONE]" && (isdone=true; break)
-                    data = JSON.parse(replace(line, r"^data: " => ""))
-                    if data["type"] == "error"
-                        @show line
-                        error_msg = get(data, "error", Dict("message" => "Unknown error"))["message"]
-                        put!(channel, "ERROR: $error_msg")
-                        printout && println("\nERROR: $error_msg\n")
-                        put!(channel, "Details: $(get(data["error"], "details",""))")
-                        printout && println("\nERROR: $(get(data["error"], "details",""))\n")
-                        isdone = true
-                        break
-                    elseif get(get(data, "delta", Dict()), "type", "") == "text_delta"
-                        text = data["delta"]["text"]
-                        put!(channel, text)
-                        printout && print(text)
-                        flush(stdout)                   
-                    elseif data["type"] == "message_delta"
-                        put!(meta, "((input_tokens: $(get(get(data,"usage",Dict()),"input_tokens",-1)), output_tokens: $(get(get(data,"usage",Dict()), "output_tokens", -1))))")
-                    elseif data["type"] == "message_start"
-                        put!(meta, "((message: $(get(data["message"],"id",-1)), input_tokens: $(get(get(data,"usage",Dict()),"input_tokens",-1)), output_tokens: $(get(get(data,"usage",Dict()), "output_tokens", -1))))")
-                    elseif data["type"] == "message_stop"
-                        close(channel)
-                        close(meta)
-                    elseif data["type"] in ["content_block_start", "content_block_stop", "ping"]
-                        nothing
+                    if startswith(line, "data: ") 
+                        line == "data: [DONE]" && (isdone=true; break)
+                        data = JSON.parse(replace(line, r"^data: " => ""))
+                        if get(get(data, "delta", Dict()), "type", "") == "text_delta"
+                            text = data["delta"]["text"]
+                            put!(channel, text)
+                            printout && println(text)
+                            flush(stdout)                   
+                        elseif data["type"] == "message_delta"
+                            put!(meta, "((input_tokens: $(get(get(data,"usage",Dict()),"input_tokens",-1)), output_tokens: $(get(get(data,"usage",Dict()), "output_tokens", -1))))")
+                        elseif data["type"] == "message_start"
+                            put!(meta, "((message: $(get(data["message"],"id",-1)), input_tokens: $(get(get(data,"usage",Dict()),"input_tokens",-1)), output_tokens: $(get(get(data,"usage",Dict()), "output_tokens", -1))))")
+                        elseif data["type"] == "message_stop"
+                            close(channel)
+                            close(meta)
+                        elseif data["type"] in ["content_block_start", "content_block_stop", "ping"]
+                            nothing
+                        elseif data["type"] == "error"
+                            error_type = get(data["error"], "type", "unknown")
+                            error_msg = get(data["error"], "message", "Unknown error")
+                            error_details = get(data["error"], "details", "")
+                            
+                            if error_type == "overloaded_error"
+                                put!(channel, "ERROR: Server overloaded. Please try again later.")
+                            elseif error_type == "api_error"
+                                put!(channel, "ERROR: Internal server error. Please try again later.")
+                            else
+                                put!(channel, "ERROR: $error_msg")
+                            end
+                            
+                            printout && println("\nERROR: $error_msg\n")
+                            if !isempty(error_details)
+                                put!(channel, "Details: $error_details")
+                                printout && println("\nDetails: $error_details\n")
+                            end
+                            isdone = true
+                            break
+                        else
+                            println("unknown packet")
+                            println(line)
+                         end
+                    elseif startswith(line, "event: ") 
+                        printout && println(line)
                     else
-                        println("unknown packet")
-                        println(line)
+                        @show line
+                        data = JSON.parse(line)
+                        if data["type"] == "error"
+                            error_type = get(data["error"], "type", "unknown")
+                            error_msg = get(data["error"], "message", "Unknown error")
+                            error_details = get(data["error"], "details", "")
+                            
+                            if error_type == "overloaded_error"
+                                put!(channel, "ERROR: Server overloaded. Please try again later.")
+                            elseif error_type == "api_error"
+                                put!(channel, "ERROR: Internal server error. Please try again later.")
+                            else
+                                put!(channel, "ERROR: $error_msg")
+                            end
+                            
+                            printout && println("\nERROR: $error_msg\n")
+                            if !isempty(error_details)
+                                put!(channel, "Details: $error_details")
+                                printout && println("\nDetails: $error_details\n")
+                            end
+                            isdone = true
+                            break
+                        end
                     end
+                    
                 end
             end
             HTTP.closeread(io)
@@ -116,6 +157,13 @@ function channel_to_string(channel::Channel)
 end
 
 ai_stream_safe(msgs; model, max_tokens=DEFAULT_MAX_TOKEN, printout=true) = safe_fn(stream_response, msgs, model=model, max_tokens=max_tokens, printout=printout)
-ai_ask_safe(conversation; model, return_all=false)     = safe_fn(aigenerate, conversation, model=model, return_all=return_all)
+ai_ask_safe(conversation::Vector{Dict{String,String}}; model, return_all=false, max_token=DEFAULT_MAX_TOKEN)     = safe_fn(aigenerate, 
+ [
+    msg["role"] == "system" ? SystemMessage(msg["content"]) :
+    msg["role"] == "user" ? UserMessage(msg["content"]) :
+    msg["role"] == "assistant" ? AIMessage(msg["content"]) : UserMessage(msg["content"])
+    for msg in conversation
+], model=model, return_all=return_all, max_token=max_token)
+ai_ask_safe(conversation; model, return_all=false, max_token=DEFAULT_MAX_TOKEN)     = safe_fn(aigenerate, conversation, model=model, return_all=return_all, max_token=max_token)
 
 end # module Anthropic
