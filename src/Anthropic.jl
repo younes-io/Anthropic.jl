@@ -2,12 +2,14 @@ module Anthropic
 
 using HTTP
 using JSON
+using Boilerplate: @async_showerr
 using PromptingTools: SystemMessage, UserMessage, AIMessage
 
 const API_URL = "https://api.anthropic.com/v1/messages"
 const DEFAULT_MAX_TOKEN = 4096
 
 include("error_handler.jl")
+include("pricing.jl")
 
 
 export ai_stream_safe, ai_ask_safe, stream_response
@@ -33,6 +35,10 @@ function is_valid_message_sequence(messages)
     return true
 end
 
+
+
+
+
 stream_response(prompt::String; model::String="claude-3-5-sonnet-20240620", max_tokens::Int=DEFAULT_MAX_TOKEN, printout=true) = stream_response([Dict("role" => "user", "content" => prompt)]; model, max_tokens, printout)
 function stream_response(msgs::Vector{Dict{String,String}}; model::String="claude-3-opus-20240229", max_tokens::Int=DEFAULT_MAX_TOKEN, printout=true)
     body = Dict("model" => model, "max_tokens" => max_tokens, "stream" => true)
@@ -55,8 +61,8 @@ function stream_response(msgs::Vector{Dict{String,String}}; model::String="claud
     
     
     channel = Channel{String}(2000)
-    meta = Channel{String}(100)
-    @async (
+    in_meta, out_meta = StreamMeta("",0,0, 0f0), StreamMeta("",0,0, 0f0)
+    @async_showerr (
         HTTP.open("POST", "https://api.anthropic.com/v1/messages", headers; status_exception=false) do io
             write(io, JSON.json(body))
             HTTP.closewrite(io)    # indicate we're done writing to the request
@@ -76,13 +82,19 @@ function stream_response(msgs::Vector{Dict{String,String}}; model::String="claud
                             put!(channel, text)
                             printout && println(text)
                             flush(stdout)                   
-                        elseif data["type"] == "message_delta"
-                            put!(meta, "((input_tokens: $(get(get(data,"usage",Dict()),"input_tokens",-1)), output_tokens: $(get(get(data,"usage",Dict()), "output_tokens", -1))))")
                         elseif data["type"] == "message_start"
-                            put!(meta, "((message: $(get(data["message"],"id",-1)), input_tokens: $(get(get(data,"usage",Dict()),"input_tokens",-1)), output_tokens: $(get(get(data,"usage",Dict()), "output_tokens", -1))))")
+                            in_meta.id            = get(data["message"],"id","")
+                            in_meta.input_token  += get(get(data["message"],"usage",Dict()),"input_tokens",0)
+                            in_meta.output_token += get(get(data["message"],"usage",Dict()),"output_tokens",0)
+                            call_cost!(in_meta, model);
+                            @show out_meta
+                        elseif data["type"] == "message_delta"
+                            out_meta.input_token  += get(get(data,"usage",Dict()),"input_tokens",0)
+                            out_meta.output_token += get(get(data,"usage",Dict()),"output_tokens",0)
+                            call_cost!(out_meta, model);
+                            @show out_meta
                         elseif data["type"] == "message_stop"
                             close(channel)
-                            close(meta)
                         elseif data["type"] in ["content_block_start", "content_block_stop", "ping"]
                             nothing
                         elseif data["type"] == "error"
@@ -142,10 +154,9 @@ function stream_response(msgs::Vector{Dict{String,String}}; model::String="claud
             HTTP.closeread(io)
         end;
         isopen(channel) && close(channel);
-        isopen(meta) && close(meta)
     )
 
-    return channel
+    return channel, in_meta, out_meta
 end
 
 function channel_to_string(channel::Channel)
