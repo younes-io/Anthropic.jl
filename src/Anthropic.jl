@@ -61,7 +61,8 @@ function stream_response(msgs::Vector{Dict{String,String}}; model::String="claud
     
     
     channel = Channel{String}(2000)
-    in_meta, out_meta = StreamMeta("",0,0, 0f0), StreamMeta("",0,0, 0f0)
+    in_meta, out_meta = StreamMeta("", 0, 0, 0f0, 0e0), StreamMeta("", 0, 0, 0f0, 0e0)
+    start_time = time()
     @async_showerr (
         HTTP.open("POST", "https://api.anthropic.com/v1/messages", headers; status_exception=false) do io
             write(io, JSON.json(body))
@@ -80,17 +81,19 @@ function stream_response(msgs::Vector{Dict{String,String}}; model::String="claud
                         if get(get(data, "delta", Dict()), "type", "") == "text_delta"
                             text = data["delta"]["text"]
                             put!(channel, text)
-                            printout && println(text)
-                            flush(stdout)                   
+                            printout && (println(text);flush(stdout)   )                
                         elseif data["type"] == "message_start"
-                            in_meta.id            = get(data["message"],"id","")
-                            in_meta.input_token  += get(get(data["message"],"usage",Dict()),"input_tokens",0)
-                            in_meta.output_token += get(get(data["message"],"usage",Dict()),"output_tokens",0)
+                            in_meta.elapsed        = time() # we substract start_time after message arrived!
+                            in_meta.id             = get(data["message"],"id","")
+                            in_meta.input_tokens  += get(get(data["message"],"usage",Dict()),"input_tokens",0)
+                            in_meta.output_tokens += get(get(data["message"],"usage",Dict()),"output_tokens",0)
                             call_cost!(in_meta, model);
+
                             @show out_meta
                         elseif data["type"] == "message_delta"
-                            out_meta.input_token  += get(get(data,"usage",Dict()),"input_tokens",0)
-                            out_meta.output_token += get(get(data,"usage",Dict()),"output_tokens",0)
+                            out_meta.elapsed        = time() # we substract start_time after message arrived!
+                            out_meta.input_tokens  += get(get(data,"usage",Dict()),"input_tokens",0)
+                            out_meta.output_tokens += get(get(data,"usage",Dict()),"output_tokens",0)
                             call_cost!(out_meta, model);
                             @show out_meta
                         elseif data["type"] == "message_stop"
@@ -98,8 +101,8 @@ function stream_response(msgs::Vector{Dict{String,String}}; model::String="claud
                         elseif data["type"] in ["content_block_start", "content_block_stop", "ping"]
                             nothing
                         elseif data["type"] == "error"
-                            error_type = get(data["error"], "type", "unknown")
-                            error_msg = get(data["error"], "message", "Unknown error")
+                            error_type    = get(data["error"], "type", "unknown")
+                            error_msg     = get(data["error"], "message", "Unknown error")
                             error_details = get(data["error"], "details", "")
                             
                             if error_type == "overloaded_error"
@@ -156,7 +159,7 @@ function stream_response(msgs::Vector{Dict{String,String}}; model::String="claud
         isopen(channel) && close(channel);
     )
 
-    return channel, in_meta, out_meta
+    return channel, in_meta, out_meta, start_time
 end
 
 function channel_to_string(channel::Channel)

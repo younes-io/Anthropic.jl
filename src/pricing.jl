@@ -1,9 +1,10 @@
 
 @kwdef mutable struct StreamMeta
     id::String=""
-    input_token::Int=0
-    output_token::Int=0
+    input_tokens::Int=0
+    output_tokens::Int=0
     price::Float32=0f0
+    elapsed::Float64=0f0
 end
 to_dict(x::StreamMeta) = Dict((name => getproperty(x, name) for name in propertynames(x)))
 
