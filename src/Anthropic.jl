@@ -36,19 +36,11 @@ function is_valid_message_sequence(messages)
 end
 
 
-
-
-
-stream_response(prompt::String; model::String="claude-3-5-sonnet-20240620", max_tokens::Int=DEFAULT_MAX_TOKEN, printout=true) = stream_response([Dict("role" => "user", "content" => prompt)]; model, max_tokens, printout)
-function stream_response(msgs::Vector{Dict{String,String}}; model::String="claude-3-opus-20240229", max_tokens::Int=DEFAULT_MAX_TOKEN, printout=true)
-    body = Dict("model" => model, "max_tokens" => max_tokens, "stream" => true)
+stream_response(prompt::String; system_msg="", model::String="claude-3-5-sonnet-20240620", max_tokens::Int=DEFAULT_MAX_TOKEN, printout=true) = stream_response([Dict("role" => "user", "content" => prompt)]; system_msg, model, max_tokens, printout)
+function stream_response(msgs::Vector{Dict{String,String}}; system_msg="", model::String="claude-3-opus-20240229", max_tokens::Int=DEFAULT_MAX_TOKEN, printout=true)
+    body = Dict("messages" => msgs, "model" => model, "max_tokens" => max_tokens, "stream" => true)
     
-    if msgs[1]["role"] == "system"
-        body["system"] = msgs[1]["content"]
-        body["messages"] = msgs[2:end]
-    else
-        body["messages"] = msgs
-    end
+    system_msg !== "" && (body["system"] = system_msg)
     
     @assert is_valid_message_sequence(body["messages"]) "Invalid message sequence. Messages should alternate between 'user' and 'assistant', starting with 'user'. $(msgs[2:end])"
     
@@ -61,7 +53,7 @@ function stream_response(msgs::Vector{Dict{String,String}}; model::String="claud
     
     
     channel = Channel{String}(2000)
-    in_meta, out_meta = StreamMeta("", 0, 0, 0f0, 0e0), StreamMeta("", 0, 0, 0f0, 0e0)
+    user_meta, ai_meta = StreamMeta("", 0, 0, 0f0, 0e0), StreamMeta("", 0, 0, 0f0, 0e0)
     start_time = time()
     @async_showerr (
         HTTP.open("POST", "https://api.anthropic.com/v1/messages", headers; status_exception=false) do io
@@ -83,19 +75,16 @@ function stream_response(msgs::Vector{Dict{String,String}}; model::String="claud
                             put!(channel, text)
                             printout && (println(text);flush(stdout)   )                
                         elseif data["type"] == "message_start"
-                            in_meta.elapsed        = time() # we substract start_time after message arrived!
-                            in_meta.id             = get(data["message"],"id","")
-                            in_meta.input_tokens  += get(get(data["message"],"usage",Dict()),"input_tokens",0)
-                            in_meta.output_tokens += get(get(data["message"],"usage",Dict()),"output_tokens",0)
-                            call_cost!(in_meta, model);
-
-                            @show out_meta
+                            user_meta.elapsed       = time() # we substract start_time after message arrived!
+                            user_meta.id            = get(data["message"],"id","")
+                            user_meta.input_tokens  = get(get(data["message"],"usage",Dict()),"input_tokens",0)
+                            user_meta.output_tokens = get(get(data["message"],"usage",Dict()),"output_tokens",0)
+                            call_cost!(user_meta, model);
                         elseif data["type"] == "message_delta"
-                            out_meta.elapsed        = time() # we substract start_time after message arrived!
-                            out_meta.input_tokens  += get(get(data,"usage",Dict()),"input_tokens",0)
-                            out_meta.output_tokens += get(get(data,"usage",Dict()),"output_tokens",0)
-                            call_cost!(out_meta, model);
-                            @show out_meta
+                            ai_meta.elapsed       = time() # we substract start_time after message arrived!
+                            ai_meta.input_tokens  = get(get(data,"usage",Dict()),"input_tokens",0)
+                            ai_meta.output_tokens = get(get(data,"usage",Dict()),"output_tokens",0)
+                            call_cost!(ai_meta, model);
                         elseif data["type"] == "message_stop"
                             close(channel)
                         elseif data["type"] in ["content_block_start", "content_block_stop", "ping"]
@@ -159,7 +148,7 @@ function stream_response(msgs::Vector{Dict{String,String}}; model::String="claud
         isopen(channel) && close(channel);
     )
 
-    return channel, in_meta, out_meta, start_time
+    return channel, user_meta, ai_meta, start_time
 end
 
 function channel_to_string(channel::Channel)
