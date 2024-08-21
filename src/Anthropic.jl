@@ -2,7 +2,7 @@ module Anthropic
 
 using HTTP
 using JSON
-using Boilerplate: @async_showerr
+using BoilerplateCvikli: @async_showerr
 using PromptingTools: SystemMessage, UserMessage, AIMessage
 
 const API_URL = "https://api.anthropic.com/v1/messages"
@@ -36,8 +36,8 @@ function is_valid_message_sequence(messages)
 end
 
 
-stream_response(prompt::String; system_msg="", model::String="claude-3-5-sonnet-20240620", max_tokens::Int=DEFAULT_MAX_TOKEN, printout=true) = stream_response([Dict("role" => "user", "content" => prompt)]; system_msg, model, max_tokens, printout)
-function stream_response(msgs::Vector{Dict{String,String}}; system_msg="", model::String="claude-3-opus-20240229", max_tokens::Int=DEFAULT_MAX_TOKEN, printout=true)
+stream_response(prompt::String; system_msg="", model::String="claude-3-5-sonnet-20240620", max_tokens::Int=DEFAULT_MAX_TOKEN, printout=true, verbose=false) = stream_response([Dict("role" => "user", "content" => prompt)]; system_msg, model, max_tokens, printout, verbose)
+function stream_response(msgs::Vector{Dict{String,String}}; system_msg="", model::String="claude-3-opus-20240229", max_tokens::Int=DEFAULT_MAX_TOKEN, printout=true, verbose=false)
     body = Dict("messages" => msgs, "model" => model, "max_tokens" => max_tokens, "stream" => true)
     
     system_msg !== "" && (body["system"] = system_msg)
@@ -73,7 +73,7 @@ function stream_response(msgs::Vector{Dict{String,String}}; system_msg="", model
                         if get(get(data, "delta", Dict()), "type", "") == "text_delta"
                             text = data["delta"]["text"]
                             put!(channel, text)
-                            printout && (println(text);flush(stdout)   )                
+                            printout && (print(text);flush(stdout)   )                
                         elseif data["type"] == "message_start"
                             user_meta.elapsed       = time() # we substract start_time after message arrived!
                             user_meta.id            = get(data["message"],"id","")
@@ -102,10 +102,10 @@ function stream_response(msgs::Vector{Dict{String,String}}; system_msg="", model
                                 put!(channel, "ERROR: $error_msg")
                             end
                             
-                            printout && println("\nERROR: $error_msg\n")
+                            println("\nERROR: $error_msg\n")
                             if !isempty(error_details)
                                 put!(channel, "Details: $error_details")
-                                printout && println("\nDetails: $error_details\n")
+                                println("\nDetails: $error_details\n")
                             end
                             isdone = true
                             break
@@ -114,7 +114,7 @@ function stream_response(msgs::Vector{Dict{String,String}}; system_msg="", model
                             println(line)
                          end
                     elseif startswith(line, "event: ") 
-                        printout && println(line)
+                        verbose && println(line)
                     else
                         @show line
                         data = JSON.parse(line)
@@ -131,10 +131,10 @@ function stream_response(msgs::Vector{Dict{String,String}}; system_msg="", model
                                 put!(channel, "ERROR: $error_msg")
                             end
                             
-                            printout && println("\nERROR: $error_msg\n")
+                            println("\nERROR: $error_msg\n")
                             if !isempty(error_details)
                                 put!(channel, "Details: $error_details")
-                                printout && println("\nDetails: $error_details\n")
+                                println("\nDetails: $error_details\n")
                             end
                             isdone = true
                             break
@@ -151,10 +151,16 @@ function stream_response(msgs::Vector{Dict{String,String}}; system_msg="", model
     return channel, user_meta, ai_meta, start_time
 end
 
-function channel_to_string(channel::Channel)
-    response = ""
+function channel_to_string(channel::Channel; cb=(()-> return nothing))
+    first_text = take!(channel)
+    response = first_text
+    cb()
+    println()
+    print("\e[32m¬ \e[0m")
+    print(first_text)
     for chunk in channel
         response *= chunk
+        print(chunk)
     end
     return response
 end

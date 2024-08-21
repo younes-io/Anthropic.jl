@@ -32,9 +32,19 @@ function call_cost(input_tokens::Int, output_tokens::Int, model::String)
     return input_cost + output_cost
 end
 call_cost!(meta::StreamMeta, model::String) = (meta.price = call_cost(meta.input_tokens, meta.output_tokens, model))
+calc_elapsed_times(ai_meta::StreamMeta, user_elapsed::Float64, start_time) = (ai_meta.elapsed = ai_meta.elapsed - start_time - user_elapsed)
 function calc_elapsed_times(user_meta::StreamMeta, ai_meta::StreamMeta, start_time)
     user_meta.elapsed -= start_time
     ai_meta.elapsed    = ai_meta.elapsed - start_time - user_meta.elapsed
 end
 
 initStreamMeta(id::String, in_tok::Int, out_tok::Int, model::String) = call_cost!(StreamMeta(id, in_tok, out_tok, 0f0), model)
+function format_meta_info(meta::StreamMeta)
+    parts = String[]
+    meta.input_tokens > 0 && push!(parts, "$(meta.input_tokens) in")
+    meta.output_tokens > 0 && push!(parts, "$(meta.output_tokens) out")
+    meta.price > 0 && push!(parts,  "\$$(meta.price)")
+    meta.elapsed > 0 && push!(parts, "$(meta.elapsed)s")
+    
+    isempty(parts) ? "" : "[$(join(parts, ", "))]"
+end

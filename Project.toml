@@ -1,17 +1,16 @@
 name = "Anthropic"
 uuid = "a00d14cb-3434-48ec-9b49-cfc2b9ce2a8f"
 authors = ["Cvikli <havlikmarcell@gmail.com>"]
-version = "0.8.0"
+version = "0.9.0"
 
 [deps]
-Boilerplate = "fe7df2fb-dcb5-4bf9-996b-0af1f7856ff2"
+BoilerplateCvikli = "9c9f911a-9395-49bd-b3fc-139ceb24aa85"
 HTTP = "cd3eb016-35fb-5094-929b-558a96fad6f3"
 JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
 PromptingTools = "670122d1-24a8-4d70-bfce-740807c42192"
 
-
 [compat]
-julia = "^1.5"
-HTTP = "1.10.8"
-JSON = "0.21.4"
-PromptingTools = "0.46.0"
+JSON = ">=0.21.4"
+HTTP = ">=1.10.8"
+julia = ">=1.9"
+PromptingTools = ">=0.46.0"
