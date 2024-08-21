@@ -159,7 +159,7 @@ function channel_to_string(channel::Channel)
     return response
 end
 
-ai_stream_safe(msgs; model, max_tokens=DEFAULT_MAX_TOKEN, printout=true) = safe_fn(stream_response, msgs, model=model, max_tokens=max_tokens, printout=printout)
+ai_stream_safe(msgs; model, max_tokens=DEFAULT_MAX_TOKEN, printout=true, system_msg="") = safe_fn(stream_response, msgs, system_msg=system_msg, model=model, max_tokens=max_tokens, printout=printout)
 ai_ask_safe(conversation::Vector{Dict{String,String}}; model, return_all=false, max_token=DEFAULT_MAX_TOKEN)     = safe_fn(aigenerate, 
  [
     msg["role"] == "system" ? SystemMessage(msg["content"]) :
