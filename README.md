@@ -9,8 +9,7 @@ Anthropic.jl is a Julia package that provides a simple interface to interact wit
 ## Installation
 
 ```julia
-using Pkg
-Pkg.add(url="https://github.com/Cvikli/Anthropic.jl.git")
+] add Anthropic
 ```
 
 ## Usage

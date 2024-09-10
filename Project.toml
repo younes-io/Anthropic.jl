@@ -1,7 +1,7 @@
 name = "Anthropic"
 uuid = "a00d14cb-3434-48ec-9b49-cfc2b9ce2a8f"
 authors = ["Cvikli <havlikmarcell@gmail.com>"]
-version = "0.9.0"
+version = "1.0.0"
 
 [deps]
 BoilerplateCvikli = "9c9f911a-9395-49bd-b3fc-139ceb24aa85"
