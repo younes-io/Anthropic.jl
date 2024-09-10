@@ -85,7 +85,7 @@ function parse_stream_data(raw_data::String)
 end
 
 function process_stream(channel::Channel, model;
-    on_text::Function     = (text) -> nothing,
+    on_text::Function     = (text) -> print(text),
     on_meta_usr::Function = (meta) -> nothing,
     on_meta_ai::Function  = (meta) -> nothing,
     on_error::Function    = (error) -> @warn("Error in stream: $error"),

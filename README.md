@@ -23,8 +23,13 @@ using Anthropic
 # Set your API key as an environment variable or like this
 ENV["ANTHROPIC_API_KEY"] = "your_api_key_here"
 
-# Calling raw streaming without fallback if claude is overloaded:
-response_channel = stream_response("Tell me a joke")
+
+# Get the raw stream
+channel = stream_response("Tell me a short joke", printout=false)
+
+# Process the stream
+using Anthropic:process_stream
+full_response, message_meta = process_stream(channel)
 
 # Stream a response called with protection.
 response_channel = ai_stream_safe("Tell me a joke")
