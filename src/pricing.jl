@@ -20,7 +20,7 @@ const TOKEN_COSTS = Dict(
     "claude-instant-1.2" => (input = 0.8 / 1000000, output = 2.4 / 1000000)
 )
 
-append_calculated_cost(data, model::String) = (data["price"] = append_calculated_cost(data["input_tokens"], data["output_tokens"], data["cache_creation_input_tokens"], data["cache_read_input_tokens"], model); return data)
+append_calculated_cost(data, model::String) = append_calculated_cost(data["input_tokens"], data["output_tokens"], data["cache_creation_input_tokens"], data["cache_read_input_tokens"], model)
 append_calculated_cost(input_tokens::Int, output_tokens::Int, cache_creation_input_tokens::Int, cache_read_input_tokens::Int, model::String) =call_cost(input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens, model)
 function call_cost(input_tokens::Int, output_tokens::Int, cache_creation_input_tokens::Int, cache_read_input_tokens::Int, model::String)
     if !haskey(TOKEN_COSTS, model)
