@@ -41,10 +41,11 @@ println(response.content)
 ```
 
 ## TODO
-- Token, cost and ellapsed time should be also noted
-- type ERROR in the streaming should be handled more comprehensively... 
+- [ ] Do a @warning if there is more meta data then we handle
+- [x] Token, cost and ellapsed time should be also noted
+- [ ] type ERROR in the streaming should be handled more comprehensively... 
 Cancel request works on the web...
-- Implement response cancellation functionality. Canceling a query should be possible somehow! Do we have "stop" API? example: https://api.claude.ai/api/organizations/d9192fb1-1546-491e-89f2-d3432c9695d2/chat_conversations/f2f779eb-49c5-4605-b8a5-009cdb88fe20/stop_response
+- [ ] Implement response cancellation functionality. Canceling a query should be possible somehow! Do we have "stop" API? example: https://api.claude.ai/api/organizations/d9192fb1-1546-491e-89f2-d3432c9695d2/chat_conversations/f2f779eb-49c5-4605-b8a5-009cdb88fe20/stop_response
 
 Other case:
 Chat_conversation id: https://api.claude.ai/api/organizations/d9192fb1-1546-491e-89f2-d3432c9695d2/chat_conversations 

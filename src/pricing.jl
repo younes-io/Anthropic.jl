@@ -20,6 +20,8 @@ const TOKEN_COSTS = Dict(
     "claude-instant-1.2" => (input = 0.8 / 1000000, output = 2.4 / 1000000)
 )
 
+append_calculated_cost(data, model::String) = (data["price"] = append_calculated_cost(data["input_tokens"], data["output_tokens"], data["cache_creation_input_tokens"], data["cache_read_input_tokens"], model); return data)
+append_calculated_cost(input_tokens::Int, output_tokens::Int, cache_creation_input_tokens::Int, cache_read_input_tokens::Int, model::String) =call_cost(input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens, model)
 function call_cost(input_tokens::Int, output_tokens::Int, cache_creation_input_tokens::Int, cache_read_input_tokens::Int, model::String)
     if !haskey(TOKEN_COSTS, model)
         @warn "Model $model not found in TOKEN_COSTS. Using default costs."
@@ -51,6 +53,17 @@ function format_meta_info(meta::StreamMeta)
     meta.cache_read_input_tokens > 0 && push!(parts, "$(meta.cache_read_input_tokens) cache read")
     meta.price > 0 && push!(parts,  "\$$(round(meta.price, digits=6))")
     meta.elapsed > 0 && push!(parts, "$(round(meta.elapsed, digits=2))s")
+    
+    isempty(parts) ? "" : "[$(join(parts, ", "))]"
+end
+function format_meta_info(meta::Dict)
+    parts = String[]
+    meta["input_tokens"] > 0 && push!(parts, "$(meta["input_tokens"]) in")
+    meta["output_tokens"] > 0 && push!(parts, "$(meta["output_tokens"]) out")
+    meta["cache_creation_input_tokens"] > 0 && push!(parts, "$(meta["cache_creation_input_tokens"]) cache creation")
+    meta["cache_read_input_tokens"] > 0 && push!(parts, "$(meta["cache_read_input_tokens"]) cache read")
+    meta["price"] > 0 && push!(parts,  "\$$(round(meta["price"], digits=6))")
+    meta["elapsed"] > 0 && push!(parts, "$(round(meta["elapsed"], digits=2))s")
     
     isempty(parts) ? "" : "[$(join(parts, ", "))]"
 end
