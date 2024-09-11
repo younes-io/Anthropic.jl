@@ -73,7 +73,7 @@ function parse_stream_data(raw_data::String, model)
             elseif state == :error
                 push!(events, (:error, parse_error(data)))
             else
-                @warn "unhandled eventype: $state \n$data"
+                @warn "unhandled eventype: $state\n$data"
             end
         end
     end
