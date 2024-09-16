@@ -1,48 +1,31 @@
-module Anthropic
-
-using HTTP
-using JSON
-using BoilerplateCvikli: @async_showerr
-using PromptingTools: SystemMessage, UserMessage, AIMessage
-
-const API_URL = "https://api.anthropic.com/v1/messages"
-const DEFAULT_MAX_TOKEN = 4096
-
-include("error_handler.jl")
-include("pricing.jl")
-include("parser.jl")
-
-export ai_stream_safe, ai_ask_safe, stream_response, process_stream
-
-function get_api_key()
-    key = get(ENV, "ANTHROPIC_API_KEY", "")
-    isempty(key) && error("ANTHROPIC_API_KEY environment variable is not set")
-    return key
-end
-
-function is_valid_message_sequence(messages)
-    if isempty(messages) || messages[1]["role"] != "user"
-        return false
-    end
-    for i in 2:length(messages)
-        if messages[i]["role"] == messages[i-1]["role"]
-            return false
-        end
-        if messages[i]["role"] ∉ ["user", "assistant"]
-            return false
-        end
-    end
-    return true
-end
-
 
 stream_response(prompt::String; system_msg="", model::String="claude-3-5-sonnet-20240620", max_tokens::Int=DEFAULT_MAX_TOKEN, printout=true, verbose=false) = stream_response([Dict("role" => "user", "content" => prompt)]; system_msg, model, max_tokens, printout, verbose)
-function stream_response(msgs::Vector{Dict{String,String}}; system_msg="", model::String="claude-3-opus-20240229", max_tokens::Int=DEFAULT_MAX_TOKEN, printout=true, verbose=false)
-    body = Dict("messages" => msgs, "model" => model, "max_tokens" => max_tokens, "stream" => true)
+function stream_response(msgs::Vector{Dict{String,T}}; system_msg="", model::String="claude-3-opus-20240229", max_tokens::Int=DEFAULT_MAX_TOKEN, printout=true, verbose=false) where T
+    # Process messages to handle both text and image inputs
+    processed_msgs = []
+    for msg in msgs
+        if msg["role"] == "user" && msg["content"] isa Vector
+            # Handle image + text input
+            processed_content = []
+            for item in msg["content"]
+                if item isa Dict && item["type"] == "image"
+                    push!(processed_content, process_image(item["source"]["path"]))
+                else
+                    push!(processed_content, item)#Dict("type" => "text", "text" => item))
+                end
+            end
+            push!(processed_msgs, Dict("role" => "user", "content" => processed_content))
+        else
+            # Handle text-only input
+            push!(processed_msgs, msg)
+        end
+    end
+    
+    body = Dict("messages" => processed_msgs, "model" => model, "max_tokens" => max_tokens, "stream" => true)
     
     system_msg !== "" && (body["system"] = system_msg)
     
-    @assert is_valid_message_sequence(body["messages"]) "Invalid message sequence. Messages should alternate between 'user' and 'assistant', starting with 'user'. $(msgs[2:end])"
+    @assert is_valid_message_sequence(body["messages"]) "Invalid message sequence. Messages should alternate between 'user' and 'assistant', starting with 'user'."
     
     headers = [
         "Content-Type" => "application/json",
@@ -50,7 +33,6 @@ function stream_response(msgs::Vector{Dict{String,String}}; system_msg="", model
         "anthropic-version" => "2023-06-01"
     ]
     max_tokens>4096 && model=="claude-3-5-sonnet-20240620" && push!(headers, "anthropic-beta"=>"max-tokens-3-5-sonnet-2024-07-15")
-    
     
     channel = Channel{String}(2000)
     user_meta, ai_meta = StreamMeta("", 0, 0, 0f0, 0e0), StreamMeta("", 0, 0, 0f0, 0e0)
@@ -164,15 +146,3 @@ function channel_to_string(channel::Channel; cb=(()-> return nothing))
     end
     return response
 end
-
-ai_stream_safe(msgs; model, max_tokens=DEFAULT_MAX_TOKEN, printout=true, system_msg="") = safe_fn(stream_response, msgs, system_msg=system_msg, model=model, max_tokens=max_tokens, printout=printout)
-ai_ask_safe(conversation::Vector{Dict{String,String}}; model, return_all=false, max_token=DEFAULT_MAX_TOKEN)     = safe_fn(aigenerate, 
- [
-    msg["role"] == "system" ? SystemMessage(msg["content"]) :
-    msg["role"] == "user" ? UserMessage(msg["content"]) :
-    msg["role"] == "assistant" ? AIMessage(msg["content"]) : UserMessage(msg["content"])
-    for msg in conversation
-]; model, return_all, max_token, cache)
-ai_ask_safe(conversation; model, return_all=false, max_token=DEFAULT_MAX_TOKEN, cache=nothing)     = safe_fn(aigenerate, conversation; model, return_all, max_token, cache)
-
-end # module Anthropic
