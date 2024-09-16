@@ -75,6 +75,8 @@ function parse_stream_data(raw_data::String, model)
             else
                 @warn "unhandled eventype: $state\n$data"
             end
+        else
+            @assert false "$line"
         end
     end
     return events
