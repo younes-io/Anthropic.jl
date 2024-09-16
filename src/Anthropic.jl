@@ -35,10 +35,30 @@ function is_valid_message_sequence(messages)
     return true
 end
 
+function convert_user_messages(msgs::Vector{Dict{String,String}})
+    return [
+        if msg["role"] == "user"
+            Dict("role" => "user",
+                 "content" => [Dict{String, Any}("type" => "text", "text" => msg["content"])])
+        else
+            msg
+        end
+        for msg in msgs
+    ]
+end
+function anthropic_extra_headers(; has_tools = false, has_cache = false, max_tokens_extended = false)
+    extra_headers = ["anthropic-version" => "2023-06-01"]
+    beta_features = String[]
+    has_tools && push!(beta_features, "tools-2024-04-04")
+    has_cache && push!(beta_features, "prompt-caching-2024-07-31")
+    max_tokens_extended && push!(beta_features, "max-tokens-3-5-sonnet-2024-07-15")
+    !isempty(beta_features) && push!(extra_headers, "anthropic-beta" => join(beta_features, ","))
+    return extra_headers
+end
 
 stream_response(prompt::String; system_msg="", model::String="claude-3-5-sonnet-20240620", max_tokens::Int=DEFAULT_MAX_TOKEN, printout=true, verbose=false) = stream_response([Dict("role" => "user", "content" => prompt)]; system_msg, model, max_tokens, printout, verbose)
 function stream_response(msgs::Vector{Dict{String,String}}; system_msg="", model::String="claude-3-opus-20240229", max_tokens::Int=DEFAULT_MAX_TOKEN, printout=true, verbose=false)
-    body = Dict("messages" => msgs, "model" => model, "max_tokens" => max_tokens, "stream" => true)
+    body = Dict("messages" => convert_user_messages(msgs), "model" => model, "max_tokens" => max_tokens, "stream" => true)
     
     system_msg !== "" && (body["system"] = system_msg)
     
@@ -47,13 +67,35 @@ function stream_response(msgs::Vector{Dict{String,String}}; system_msg="", model
     headers = [
         "Content-Type" => "application/json",
         "X-API-Key" => get_api_key(),
-        "anthropic-version" => "2023-06-01"
     ]
-    max_tokens>4096 && model=="claude-3-5-sonnet-20240620" && push!(headers, "anthropic-beta"=>"max-tokens-3-5-sonnet-2024-07-15")
+    
+    # Add anthropic-beta header if needed
+    extra_headers = anthropic_extra_headers(
+        has_cache = !isnothing(cache),
+        max_tokens_extended = (max_tokens > 4096 && model == "claude-3-5-sonnet-20240620")
+    )
+    append!(headers, extra_headers)
+    
+    # Apply cache control if specified
+    if !isnothing(cache)
+        # Apply cache control to all messages if cache is :last or :all
+        if cache == :last || cache == :all
+            for msg in body["messages"][max(end-2, 1):end]
+                if msg["role"] == "user" && !isempty(msg["content"])
+                    msg["content"][end]["cache_control"] = Dict("type" => "ephemeral")
+                end
+            end
+        end
+        
+        # Apply cache control to the system message if present
+        if (cache == :system || cache == :all) && haskey(body, "system")
+            body["system"] = [Dict("type" => "text", "text" => body["system"], "cache_control" => Dict("type" => "ephemeral"))]
+        end
+    end
     
     
     channel = Channel{String}(2000)
-    user_meta, ai_meta = StreamMeta("", 0, 0, 0f0, 0e0), StreamMeta("", 0, 0, 0f0, 0e0)
+    user_meta, ai_meta = StreamMeta(), StreamMeta()
     start_time = time()
     @async_showerr (
         HTTP.open("POST", "https://api.anthropic.com/v1/messages", headers; status_exception=false) do io
@@ -79,11 +121,15 @@ function stream_response(msgs::Vector{Dict{String,String}}; system_msg="", model
                             user_meta.id            = get(data["message"],"id","")
                             user_meta.input_tokens  = get(get(data["message"],"usage",Dict()),"input_tokens",0)
                             user_meta.output_tokens = get(get(data["message"],"usage",Dict()),"output_tokens",0)
+                            user_meta.cache_creation_input_tokens = get(get(data["message"],"usage",Dict()),"cache_creation_input_tokens",0)
+                            user_meta.cache_read_input_tokens = get(get(data["message"],"usage",Dict()),"cache_read_input_tokens",0)
                             call_cost!(user_meta, model);
                         elseif data["type"] == "message_delta"
                             ai_meta.elapsed       = time() # we substract start_time after message arrived!
                             ai_meta.input_tokens  = get(get(data,"usage",Dict()),"input_tokens",0)
                             ai_meta.output_tokens = get(get(data,"usage",Dict()),"output_tokens",0)
+                            ai_meta.cache_creation_input_tokens = get(get(data,"usage",Dict()),"cache_creation_input_tokens",0)
+                            ai_meta.cache_read_input_tokens = get(get(data,"usage",Dict()),"cache_read_input_tokens",0)
                             call_cost!(ai_meta, model);
                         elseif data["type"] == "message_stop"
                             close(channel)
@@ -165,7 +211,7 @@ function channel_to_string(channel::Channel; cb=(()-> return nothing))
     return response
 end
 
-ai_stream_safe(msgs; model, max_tokens=DEFAULT_MAX_TOKEN, printout=true, system_msg="") = safe_fn(stream_response, msgs, system_msg=system_msg, model=model, max_tokens=max_tokens, printout=printout)
+ai_stream_safe(msgs; model, max_tokens=DEFAULT_MAX_TOKEN, printout=true, system_msg="", cache=nothing) = safe_fn(stream_response, msgs; system_msg, model, max_tokens, printout, cache)
 ai_ask_safe(conversation::Vector{Dict{String,String}}; model, return_all=false, max_token=DEFAULT_MAX_TOKEN)     = safe_fn(aigenerate, 
  [
     msg["role"] == "system" ? SystemMessage(msg["content"]) :

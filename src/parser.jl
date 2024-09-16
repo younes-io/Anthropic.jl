@@ -124,17 +124,3 @@ function process_stream(channel::Channel, model;
     return full_response, user_meta, ai_meta
 end
 
-function channel_to_string(channel::Channel; cb=(()-> return nothing))
-    first_text = take!(channel)
-    response = first_text
-    cb()
-    println()
-    print("\e[32m¬ \e[0m")
-    print(first_text)
-    for chunk in channel
-        response *= chunk
-        print(chunk)
-    end
-    return response
-end
-
