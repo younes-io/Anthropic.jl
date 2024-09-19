@@ -36,91 +36,99 @@ function parse_error(data)
     )
 end
 
-function parse_stream_data(raw_data::String, model)
+function parse_stream_data(raw_data::String)
     events = []
-    lines = split(raw_data, '\n')
-    state = :waiting
-
-    for line in lines
-        isempty(line) && continue
-# @show line
-        if startswith(line, "event: ")
-            state = Symbol(strip(line[8:end]))
-        elseif startswith(line, "data: ")
-            dat = line[6:end]
-            if line == "[DONE]"
-                push!(events, (:done, nothing))
-                break
-            end
-
-            data = try
-                JSON.parse(dat)
-            catch e
-                @warn "Failed to parse JSON: $line" exception=(e, catch_backtrace())
-                push!(events, (:error, "Failed to parse JSON: $line"))
-                continue
-            end
-            if state == :message_start
-                push!(events, (:meta_usr, parse_message_start(data, model)))
-            elseif state == :message_delta
-                push!(events, (:meta_ai,  parse_message_delta(data, model)))
-            elseif state == :content_block_delta
-                push!(events, (:text, parse_text_delta(data)))
-            elseif state == :ping
-                push!(events, (:ping, ""))
-            elseif state in [:content_block_start, :content_block_stop, :message_stop]
-                nothing # unuseful data actually...
-            elseif state == :error
-                push!(events, (:error, parse_error(data)))
-            else
-                @warn "unhandled eventype: $state\n$data"
-            end
-        else
-            @assert false "$line"
-        end
+    if raw_data == "[DONE]\n\n"
+        push!(events, (:done, nothing))
+        return events
     end
+
+    data = try
+        JSON.parse(raw_data)
+    catch e
+        # @warn "Failed to parse JSON: $raw_data" exception=(e, catch_backtrace())
+        # push!(events, (:error, "Failed to parse JSON: $raw_data"))
+        return events
+    end
+
+    model = get(data, "model", "unknown")
+
+    if haskey(data, "type")
+        if data["type"] == "message_start"
+            push!(events, (:meta_usr, parse_message_start(data, model)))
+        elseif data["type"] == "content_block_start"
+            # Handle content block start if needed
+        elseif data["type"] == "content_block_delta"
+            push!(events, (:text, parse_text_delta(data)))
+        elseif data["type"] == "content_block_stop"
+            # Handle content block stop if needed
+        elseif data["type"] == "message_delta"
+            push!(events, (:meta_ai, parse_message_delta(data, model)))
+        elseif data["type"] == "message_stop"
+            # Handle message stop if needed
+        elseif data["type"] == "ping"
+            push!(events, (:ping, get(data, "data", nothing)))
+        else
+            @warn "Unhandled event type: $(data["type"])"
+        end
+    # elseif haskey(data, "delta") && haskey(data["delta"], "type")
+    #     # This is for compatibility with the original format
+    #     delta_type = data["delta"]["type"]
+    #     if delta_type == "text_delta"
+    #         push!(events, (:text, parse_text_delta(data)))
+    #     elseif delta_type == "message_delta"
+    #         push!(events, (:meta_ai, parse_message_delta(data, model)))
+    #     else
+    #         @warn "Unhandled delta type: $delta_type"
+    #     end
+    else
+        @warn "Unexpected data format: $data"
+    end
+
     return events
 end
 
-function process_stream(channel::Channel, model;
+function process_stream(channel::Channel;
     on_text::Function     = (text) -> print(text),
     on_meta_usr::Function = (meta) -> nothing,
     on_meta_ai::Function  = (meta) -> nothing,
     on_error::Function    = (error) -> @warn("Error in stream: $error"),
-    on_done::Function     = () -> @debug("Stream finished")
+    on_done::Function     = () -> @debug("Stream finished"),
+    on_ping::Function     = (data) -> @debug("Received ping: $data")
 )
     start_time = time()
-    start_time_usr=0
-    start_time_ai=0
+    start_time_usr = 0
+    start_time_ai = 0
     full_response = ""
     user_meta = Dict()
     ai_meta = Dict()
     
     for chunk in channel
-        for (type, content) in parse_stream_data(chunk, model)
+        for (type, content) in parse_stream_data(chunk)
             if type == :text
                 full_response *= content
                 on_text(content)
             elseif type == :meta_usr
                 start_time_usr = time()
-                user_meta=content
-                user_meta["elapsed"] = start_time_usr-start_time
+                user_meta = content
+                user_meta["elapsed"] = start_time_usr - start_time
                 on_meta_usr(user_meta)
             elseif type == :meta_ai
-                start_time_ai  = time()
-                ai_meta=content
-                ai_meta["elapsed"] = start_time_ai-start_time_usr
+                start_time_ai = time()
+                ai_meta = content
+                ai_meta["elapsed"] = start_time_ai - start_time_usr
                 on_meta_ai(ai_meta)
             elseif type == :ping
-                # start_time = time()
+                on_ping(content)
             elseif type == :error
                 on_error(content)
             elseif type == :done
                 on_done()
-                break
+                return full_response, user_meta, ai_meta
             end
         end
     end
+    
     return full_response, user_meta, ai_meta
 end
 

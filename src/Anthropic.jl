@@ -57,8 +57,11 @@ function anthropic_extra_headers(; has_tools = false, has_cache = false, max_tok
     return extra_headers
 end
 
-stream_response(prompt::String;                    system_msg="", model::String="claude-3-5-sonnet-20240620", max_tokens::Int=DEFAULT_MAX_TOKEN, printout=true, verbose=false, cache::Union{Nothing,Symbol}=nothing) = stream_response([Dict("role" => "user", "content" => prompt)]; system_msg, model, max_tokens, printout, verbose, cache)
-stream_response(msgs::Vector{Dict{String,String}}; system_msg="", model::String="claude-3-5-sonnet-20240620", max_tokens::Int=DEFAULT_MAX_TOKEN, printout=true, verbose=false, cache::Union{Nothing,Symbol}=nothing) = begin
+function stream_response(prompt::String; system_msg="", model::String="claude-3-5-sonnet-20240620", max_tokens::Int=DEFAULT_MAX_TOKEN, printout=true, verbose=false, cache::Union{Nothing,Symbol}=nothing) 
+    return stream_response([Dict("role" => "user", "content" => prompt)]; system_msg, model, max_tokens, printout, verbose, cache)
+end
+
+function stream_response(msgs::Vector{Dict{String,String}}; system_msg="", model::String="claude-3-5-sonnet-20240620", max_tokens::Int=DEFAULT_MAX_TOKEN, printout=true, verbose=false, cache::Union{Nothing,Symbol}=nothing)
     body = Dict("messages" => convert_user_messages(msgs), "model" => model, "max_tokens" => max_tokens, "stream" => true)
     @assert is_valid_message_sequence(body["messages"]) "Invalid message sequence. Messages should alternate between 'user' and 'assistant', starting with 'user'. $(msgs[2:end])"
     
@@ -98,29 +101,72 @@ stream_response(msgs::Vector{Dict{String,String}}; system_msg="", model::String=
         HTTP.open("POST", "https://api.anthropic.com/v1/messages", headers; status_exception=false) do io
             write(io, JSON.json(body))
             HTTP.closewrite(io)
-            HTTP.startread(io) 
+            HTTP.startread(io)
+            buffer = IOBuffer()
             while !eof(io)
                 chunk = String(readavailable(io))
-                put!(channel, chunk)
-                printout && (print(chunk); flush(stdout))
+                write(buffer, chunk)
+                seekstart(buffer)
+                while !eof(buffer)
+                    line = readline(buffer, keep=true)
+                    if isempty(line)
+                        break  # No more complete lines in the buffer
+                    end
+                    if line == "data: [DONE]\n\n"
+                        put!(channel, line)
+                        printout && print(line)
+                        close(channel)
+                        return
+                    elseif startswith(line, "data: ")
+                        jsonline = line[6:end]  # Remove "data: " prefix
+                        try
+                            # Try to parse as JSON to ensure it's complete
+                            data = JSON.parse(jsonline)
+                            # Add model information to the data
+                            data["model"] = model
+                            put!(channel, JSON.json(data))
+                            printout && verbose && println(JSON.json(data))
+                        catch e
+                            # If it's not valid JSON, it's probably incomplete
+                            # Put it back in the buffer and wait for more data
+                            seekstart(buffer)
+                            write(buffer, line)
+                            break
+                        end
+                    else
+                        # Non-data line, just pass it through
+                        put!(channel, line)
+                        printout && verbose && println(line)
+                    end
+                end
+                # Clear the processed content from the buffer
+                truncate(buffer, 0)
+                seekstart(buffer)
             end
             HTTP.closeread(io)
         end;
-        isopen(channel) && close(channel);
+        isopen(channel) && close(channel)
     )
 
     return channel
 end
 
+function ai_stream_safe(msgs; model, max_tokens=DEFAULT_MAX_TOKEN, printout=true, system_msg="", cache=nothing) 
+    return stream_response(msgs; system_msg, model, max_tokens, printout, cache)
+end
 
-ai_stream_safe(msgs; model, max_tokens=DEFAULT_MAX_TOKEN, printout=true, system_msg="", cache=nothing) = stream_response(msgs; system_msg, model, max_tokens, printout, cache)
-ai_ask_safe(conversation::Vector{Dict{String,String}}; model, return_all=false, max_token=DEFAULT_MAX_TOKEN, cache=nothing)     = safe_fn(aigenerate, 
- [
-    msg["role"] == "system" ? SystemMessage(msg["content"]) :
-    msg["role"] == "user" ? UserMessage(msg["content"]) :
-    msg["role"] == "assistant" ? AIMessage(msg["content"]) : UserMessage(msg["content"])
-    for msg in conversation
-]; model, return_all, max_token, cache)
-ai_ask_safe(conversation; model, return_all=false, max_token=DEFAULT_MAX_TOKEN, cache=nothing)     = safe_fn(aigenerate, conversation; model, return_all, max_token, cache)
+function ai_ask_safe(conversation::Vector{Dict{String,String}}; model, return_all=false, max_token=DEFAULT_MAX_TOKEN, cache=nothing)     
+    return safe_fn(aigenerate, 
+    [
+        msg["role"] == "system" ? SystemMessage(msg["content"]) :
+        msg["role"] == "user" ? UserMessage(msg["content"]) :
+        msg["role"] == "assistant" ? AIMessage(msg["content"]) : UserMessage(msg["content"])
+        for msg in conversation
+    ]; model, return_all, max_token, cache)
+end
+
+function ai_ask_safe(conversation; model, return_all=false, max_token=DEFAULT_MAX_TOKEN, cache=nothing)     
+    return safe_fn(aigenerate, conversation; model, return_all, max_token, cache)
+end
 
 end # module Anthropic
