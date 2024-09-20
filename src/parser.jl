@@ -89,19 +89,19 @@ function parse_stream_data(raw_data::String)
 end
 
 function process_stream(channel::Channel;
+    on_start::Function    = () -> nothing,
     on_text::Function     = (text) -> print(text),
     on_meta_usr::Function = (meta) -> nothing,
-    on_meta_ai::Function  = (meta) -> nothing,
+    on_meta_ai::Function  = (meta, full_msg) -> nothing,
     on_error::Function    = (error) -> @warn("Error in stream: $error"),
     on_done::Function     = () -> @debug("Stream finished"),
     on_ping::Function     = (data) -> @debug("Received ping: $data")
 )
+    local start_time_usr
     start_time = time()
-    start_time_usr = 0
-    start_time_ai = 0
+    on_start()
+    
     full_response = ""
-    user_meta = Dict()
-    ai_meta = Dict()
     
     for chunk in channel
         for (type, content) in parse_stream_data(chunk)
@@ -117,18 +117,17 @@ function process_stream(channel::Channel;
                 start_time_ai = time()
                 ai_meta = content
                 ai_meta["elapsed"] = start_time_ai - start_time_usr
-                on_meta_ai(ai_meta)
+                on_meta_ai(ai_meta, full_response)
             elseif type == :ping
                 on_ping(content)
             elseif type == :error
                 on_error(content)
             elseif type == :done
                 on_done()
-                return full_response, user_meta, ai_meta
             end
         end
     end
     
-    return full_response, user_meta, ai_meta
+    return full_response
 end
 
