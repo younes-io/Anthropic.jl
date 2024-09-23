@@ -68,8 +68,11 @@ function parse_stream_data(raw_data::String)
             # Handle message stop if needed
         elseif data["type"] == "ping"
             push!(events, (:ping, get(data, "data", nothing)))
+        elseif data["type"] == "error"
+            @warn "Unhandled event type: $(data["type"]) $data"
+            push!(events, (:error, data))
         else
-            @warn "Unhandled event type: $(data["type"])"
+            @warn "Unhandled event type: $(data["type"]) $data"
         end
     # elseif haskey(data, "delta") && haskey(data["delta"], "type")
     #     # This is for compatibility with the original format
