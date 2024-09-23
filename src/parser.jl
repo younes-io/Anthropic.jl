@@ -69,7 +69,6 @@ function parse_stream_data(raw_data::String)
         elseif data["type"] == "ping"
             push!(events, (:ping, get(data, "data", nothing)))
         elseif data["type"] == "error"
-            @warn "Unhandled event type: $(data["type"]) $data"
             push!(events, (:error, data))
         else
             @warn "Unhandled event type: $(data["type"]) $data"
@@ -86,6 +85,7 @@ function parse_stream_data(raw_data::String)
     #     end
     else
         @warn "Unexpected data format: $data"
+        @assert false "These case should be handled above... so if we face a new case then we have to extend the handled case list!"
     end
 
     return events
@@ -96,7 +96,7 @@ function process_stream(channel::Channel;
     on_text::Function     = (text) -> print(text),
     on_meta_usr::Function = (meta) -> nothing,
     on_meta_ai::Function  = (meta, full_msg) -> nothing,
-    on_error::Function    = (error) -> @warn("Error in stream: $error"),
+    on_error::Function    = (error) -> @error("Error in stream: $error"),
     on_done::Function     = () -> @debug("Stream finished"),
     on_ping::Function     = (data) -> @debug("Received ping: $data")
 )
