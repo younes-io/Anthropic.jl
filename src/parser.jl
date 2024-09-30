@@ -38,8 +38,9 @@ end
 
 function parse_stream_data(raw_data::String)
     events = []
-    if raw_data == "[DONE]\n\n"
-        push!(events, (:done, nothing))
+    if raw_data == "data: [DONE]\n\n"
+        @show raw_data
+        println("This just shouldn't exist in anthropic as it wasn't there and I got error and had to swithc to 'message_stop' event!!")
         return events
     end
 
@@ -65,7 +66,7 @@ function parse_stream_data(raw_data::String)
         elseif data["type"] == "message_delta"
             push!(events, (:meta_ai, parse_message_delta(data, model)))
         elseif data["type"] == "message_stop"
-            # Handle message stop if needed
+            push!(events, (:done, nothing))
         elseif data["type"] == "ping"
             push!(events, (:ping, get(data, "data", nothing)))
         elseif data["type"] == "error"

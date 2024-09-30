@@ -112,7 +112,7 @@ function stream_response(msgs::Vector{Dict{String,String}}; system_msg="", model
                     if isempty(line)
                         break  # No more complete lines in the buffer
                     end
-                    if line == "data: [DONE]\n\n"
+                    if line == "data: [DONE]\n\n"  # DOESN'T EXIST in anthropic!! ??? It was there in the past by the way!
                         put!(channel, line)
                         printout && print(line)
                         close(channel)
