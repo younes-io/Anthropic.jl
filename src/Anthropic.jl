@@ -11,6 +11,7 @@ const DEFAULT_MAX_TOKEN = 4096
 include("error_handler.jl")
 include("pricing.jl")
 include("parser.jl")
+include("utils.jl")
 
 export ai_stream_safe, ai_ask_safe, stream_response, process_stream
 
@@ -61,7 +62,26 @@ function stream_response(prompt::String; system_msg="", model::String="claude-3-
     return stream_response([Dict("role" => "user", "content" => prompt)]; system_msg, model, max_tokens, printout, verbose, cache)
 end
 
-function stream_response(msgs::Vector{Dict{String,String}}; system_msg="", model::String="claude-3-5-sonnet-20240620", max_tokens::Int=DEFAULT_MAX_TOKEN, printout=true, verbose=false, cache::Union{Nothing,Symbol}=nothing)
+function stream_response(msgs::Vector{Dict{String,T}}; system_msg="", model::String="claude-3-5-sonnet-20240620", max_tokens::Int=DEFAULT_MAX_TOKEN, printout=true, verbose=false, cache::Union{Nothing,Symbol}=nothing) where {T}
+    processed_msgs = []
+    for msg in msgs
+        if msg["role"] == "user" && msg["content"] isa Vector
+            # Handle image + text input
+            processed_content = []
+            for item in msg["content"]
+                if item isa Dict && item["type"] == "image"
+                    push!(processed_content, process_image(item["source"]["path"]))
+                else
+                    push!(processed_content, item)#Dict("type" => "text", "text" => item))
+                end
+            end
+            push!(processed_msgs, Dict("role" => "user", "content" => processed_content))
+        else
+            # Handle text-only input
+            push!(processed_msgs, msg)
+        end
+    end
+    
     body = Dict("messages" => convert_user_messages(msgs), "model" => model, "max_tokens" => max_tokens, "stream" => true)
     @assert is_valid_message_sequence(body["messages"]) "Invalid message sequence. Messages should alternate between 'user' and 'assistant', starting with 'user'. $(msgs[2:end])"
     
