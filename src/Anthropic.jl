@@ -61,6 +61,9 @@ end
 function stream_response(prompt::String; system_msg="", model::String="claude-3-5-sonnet-20240620", max_tokens::Int=DEFAULT_MAX_TOKEN, printout=true, verbose=false, cache::Union{Nothing,Symbol}=nothing) 
     return stream_response([Dict("role" => "user", "content" => prompt)]; system_msg, model, max_tokens, printout, verbose, cache)
 end
+function is_sonnet(model)
+    model ∈ Set(("claude-3-5-sonnet-20241022", "claude-3-5-sonnet-20240620", "claude-3-5-sonnet-latest"))
+end
 
 function stream_response(msgs::Vector{Dict{String,T}}; system_msg="", model::String="claude-3-5-sonnet-20240620", max_tokens::Int=DEFAULT_MAX_TOKEN, printout=true, verbose=false, cache::Union{Nothing,Symbol}=nothing) where {T}
     processed_msgs = []
@@ -95,7 +98,7 @@ function stream_response(msgs::Vector{Dict{String,T}}; system_msg="", model::Str
     # Add anthropic-beta header if needed
     extra_headers = anthropic_extra_headers(
         has_cache = !isnothing(cache),
-        max_tokens_extended = (max_tokens > 4096 && model == "claude-3-5-sonnet-20240620")
+        max_tokens_extended = (max_tokens > 4096 && is_sonnet(model))
     )
     append!(headers, extra_headers)
     

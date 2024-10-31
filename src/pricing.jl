@@ -13,6 +13,7 @@ to_dict(x::StreamMeta) = Dict((name => getproperty(x, name) for name in property
 const TOKEN_PRICES = Dict(
     "claude-3-opus-20240229" => (input = 15 / 1000000, output = 75 / 1000000),
     "claude-3-5-sonnet-20240620" => (input = 3 / 1000000, output = 15 / 1000000, input_tok_cache_creation=3.75/1000000, input_tok_cache_read=0.3/1000000),
+    "claude-3-5-sonnet-20241022" => (input = 3 / 1000000, output = 15 / 1000000, input_tok_cache_creation=3.75/1000000, input_tok_cache_read=0.3/1000000),
     "claude-3-sonnet-20240229" => (input = 3 / 1000000, output = 15 / 1000000),
     "claude-3-haiku-20240307" => (input = 0.25 / 1000000, output = 1.25 / 1000000, input_tok_cache_creation=0.3/1000000, input_tok_cache_read=0.025/1000000),
     "claude-2.1" => (input = 8 / 1000000, output = 24 / 1000000),
